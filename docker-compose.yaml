@@ -1,0 +1,225 @@
+services:
+  spark:
+    image: mohamedhamed13/spark:3.5.0
+    container_name: spark
+    environment:
+      - SPARK_MODE=master
+      - SPARK_CLASSPATH=/data/postgresql-42.7.10.jar
+    ports:
+      - "7077:7077"
+      - "8080:8080"
+      - "4040:4040"
+    volumes:
+      - ./scripts:/opt/airflow/scripts
+      - ./data:/opt/airflow/data
+      - ./drivers:/opt/airflow/drivers
+
+  spark-worker:
+    # small pc
+    image: mohamedhamed13/spark:3.5.0
+    container_name: spark-worker
+    depends_on:
+      - spark
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark:7077
+      - SPARK_CLASSPATH=/data/postgresql-42.7.10.jar
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./scripts:/opt/airflow/scripts
+      - ./data:/opt/airflow/data
+      - ./drivers:/opt/airflow/drivers
+
+  jupyter:
+    image: jupyter/pyspark-notebook:spark-3.5.0
+    container_name: jupyter
+    ports:
+      - "8888:8888"
+    environment:
+      - PYSPARK_PYTHON=python3
+      - SPARK_MASTER=spark://spark:7077
+      - SPARK_CLASSPATH=/data/postgresql-42.7.10.jar
+    volumes:
+      - ./scripts:/opt/airflow/scripts
+      - ./data:/opt/airflow/data
+      - ./drivers:/opt/airflow/drivers
+    depends_on:
+      - spark
+    command: start-notebook.sh --NotebookApp.token='' --NotebookApp.password=''
+
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    environment:
+      - CLUSTER_NAME=local-hadoop
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    ports:
+      - "9870:9870"
+      - "9000:9000"
+    volumes:
+      - hdfs-namenode:/hadoop/dfs/name
+      - ./dags:/opt/airflow/dags
+      - ./scripts:/opt/airflow/scripts
+      - ./data:/opt/airflow/data
+      - ./drivers:/opt/airflow/drivers
+      - ./sql:/opt/airflow/sql
+    networks:
+      - default
+
+  datanode:
+    # small pc
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+    environment:
+      - CLUSTER_NAME=local-hadoop
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    ports:
+      - "9864:9864"
+    volumes:
+      - hdfs-datanode:/hadoop/dfs/data
+    depends_on:
+      - namenode
+    networks:
+      - default
+
+  postgres_general:
+    image: postgres:15
+    container_name: postgres_general
+    restart: always
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: sessiondb
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "8085:80"
+    depends_on:
+      - postgres_general
+
+  # -------------------- PostgreSQL Airflow --------------------
+  postgres:
+    image: postgres:13
+    container_name: postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "airflow" ]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+
+  # -------------------- Airflow Webserver --------------------
+  airflow-webserver:
+    #image: apache/airflow:2.7.1-python3.9
+    build: .
+    container_name: airflow-webserver
+    restart: always
+    ports:
+      - "8089:8080"
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__FERNET_KEY=3DjyQsK6JdTq4zsiK4XHzVmVEMtRzF7jwq9VDuHQx3M=
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__WEBSERVER__SECRET_KEY=mysecretkey
+      - KAGGLE_USERNAME=muhammedhamed
+      - KAGGLE_KEY=40c67eac40da8f3d2c4795f30deffcc2
+      - AIRFLOW__CORE__DEFAULT_TIMEZONE=Africa/Cairo
+      - TZ=Africa/Cairo
+      - AIRFLOW__SMTP__SMTP_HOST=smtp.gmail.com
+      - AIRFLOW__SMTP__SMTP_STARTTLS=True
+      - AIRFLOW__SMTP__SMTP_SSL=False
+      - AIRFLOW__SMTP__SMTP_PORT=587
+      - AIRFLOW__SMTP__SMTP_MAIL_FROM=mohamedhamed199813@gmail.com
+      - AIRFLOW__SMTP__SMTP_USER=mohamedhamed199813@gmail.com
+      - AIRFLOW__SMTP__SMTP_PASSWORD=cqrefaoyxzaxopcp ## don't forget to addd your password
+      - SPARK_CLASSPATH=/data/postgresql-42.7.10.jar
+      - JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./requirements.txt:/opt/airflow/requirements.txt
+      - ./dags:/opt/airflow/dags
+      - ./scripts:/opt/airflow/scripts
+      - ./data:/opt/airflow/data
+      - ./drivers:/opt/airflow/drivers
+      - ./sql:/opt/airflow/sql
+    user: "${AIRFLOW_UID:-50000}:0"
+    command: >
+      bash -c "
+        airflow db init &&
+        airflow users create --username admin --firstname Air --lastname Flow --role Admin --email admin@example.com --password admin &&
+        exec airflow webserver
+      "
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # -------------------- Airflow Scheduler --------------------
+  airflow-scheduler:
+    #image: apache/airflow:2.7.1-python3.9
+    build: .
+    container_name: airflow-scheduler
+    restart: always
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__FERNET_KEY=3DjyQsK6JdTq4zsiK4XHzVmVEMtRzF7jwq9VDuHQx3M=
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__WEBSERVER__SECRET_KEY=mysecretkey
+      - KAGGLE_USERNAME=muhammedhamed
+      - KAGGLE_KEY=5c7fdc17516bee367c2cc3aa53572fa6
+      - AIRFLOW__CORE__DEFAULT_TIMEZONE=Africa/Cairo
+      - TZ=Africa/Cairo
+      - AIRFLOW__SMTP__SMTP_HOST=smtp.gmail.com
+      - AIRFLOW__SMTP__SMTP_STARTTLS=True
+      - AIRFLOW__SMTP__SMTP_SSL=False
+      - AIRFLOW__SMTP__SMTP_PORT=587
+      - AIRFLOW__SMTP__SMTP_MAIL_FROM=mohamedhamed199813@gmail.com
+      - AIRFLOW__SMTP__SMTP_USER=mohamedhamed199813@gmail.com
+      - AIRFLOW__SMTP__SMTP_PASSWORD=cqrefaoyxzaxopcp
+      - SPARK_CLASSPATH=/data/postgresql-42.7.10.jar
+      - JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./requirements.txt:/opt/airflow/requirements.txt
+      - ./dags:/opt/airflow/dags
+      - ./scripts:/opt/airflow/scripts
+      - ./data:/opt/airflow/data
+      - ./drivers:/opt/airflow/drivers
+      - ./sql:/opt/airflow/sql
+    user: "${AIRFLOW_UID:-50000}:0"
+    command: >
+      bash -c "
+        airflow db init &&
+        airflow users create --username admin --firstname Air --lastname Flow --role Admin --email admin@example.com --password admin &&
+        exec airflow scheduler
+      "
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  hdfs-namenode:
+  hdfs-datanode:
+  pgadmin_data:
+  pg_data:
+  mongodb_data:
+  postgres-db-volume:

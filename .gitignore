@@ -1,0 +1,15 @@
+# Docker data (Never upload actual database files)
+postgres_data/
+airflow_logs/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Spark/Hadoop logs or temporary files
+.spark-logs/
+metastore_db/
+derby.log
+
+# Large local files
+*.jar  # (Except if you want to keep the driver, but usually it's better to provide a link)
