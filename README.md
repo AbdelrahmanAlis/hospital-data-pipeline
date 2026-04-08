@@ -31,7 +31,8 @@ The pipeline follows the **Medallion Architecture**, ensuring that data is refin
 ---
 
 ## 🔄 Pipeline Workflow
-
+- this discribe the wholde pipeline:
+- **Visual:** ![PipeLine](./images/pipeline.png)
 ### 1. Extraction & Ingestion (Bronze)
 - **Action:** Pulls 5 core datasets (`Patients`, `Doctors`, `Appointments`, `Billing`, `Treatments`).
 - **Optimization:** Converted to **Parquet** to leverage columnar storage and reduce HDFS footprint.
