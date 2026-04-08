@@ -66,7 +66,6 @@ The pipeline follows the **Medallion Architecture**, ensuring that data is refin
 ├── drivers/                # Database connectors (PostgreSQL JDBC)
 ├── docker-compose.yaml     # Full stack orchestration
 ├── Dockerfile              # Custom Airflow image with Java & Spark
-└── healthcare_pipeline.ipynb # Prototyping and Debugging notebook
 
 ## 🚀 How to Run
 
